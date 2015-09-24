@@ -1,18 +1,16 @@
 import functools
+
 from toro import JoinableQueue
 from tornado.log import app_log
 from tornado.concurrent import Future
-from commons.async import schedule_at_loop
 from tornado import gen
+
+from commons.async import schedule_at_loop
 from protocol import QueclinkProtocol
 import conf
 from utils import generate_random_hex
 from logger import gen_log
-from exceptions import *
-
-
-from settings import settings
-redis_conn = settings['redis_conn']
+from commons.exceptions import MessageNotImplemented, StreamClosedError
 
 CONNECTING = 0
 OPEN = 1
@@ -24,7 +22,7 @@ class RTOManager(object):
 
     def __init__(self, *a, **kw):
         self.rto_cmds = {}
-        super(RTOManager, self).__init__(*a, **kw)
+        super(RTOManager, self).__init__()
 
     def make_rto(self, body):
         r"""It makes real time request to current connection.
@@ -133,7 +131,7 @@ class TerminalSession(RTOManager, QueclinkProtocol):
         try:
             log, sack, from_buffer = super(
                 TerminalSession, self).terminal_message_flow(msg)
-        except MessageNotImplemented, e:  # silence exc
+        except MessageNotImplemented as e:  # silence exc
             gen_log.exception(e)
             return
         count_num = log.log.count_number
@@ -184,8 +182,6 @@ class TerminalSession(RTOManager, QueclinkProtocol):
                          callback=self._handle_message_flow)
         schedule_at_loop(self.io_loop, self._tail_stream_buffer,
                          callback=self._handle_message_flow)
-        # schedule_at_loop(self.io_loop, self._command_watchdog,
-        #                  callback=self._handle_message_flow)
 
     @gen.coroutine
     def _tail_messagebus(self):
@@ -215,8 +211,6 @@ class TerminalSession(RTOManager, QueclinkProtocol):
         # lead to memory leaks due to file descriptor will no be closed
         try:
             future.result()
-        except StreamClosedError as sce:
-            app_log.exception(sce)
         except Exception as e:
             app_log.exception(e)
         finally:

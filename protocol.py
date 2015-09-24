@@ -1,8 +1,12 @@
 import contextlib
 from collections import namedtuple, OrderedDict
+
 from voluptuous import Schema, Length, Match, All
-from exceptions import *
-import conf, utils
+
+from commons.exceptions import *
+import conf
+import utils
+
 rsrvd = utils.rsrvd
 qq = utils.protocol_validator
 

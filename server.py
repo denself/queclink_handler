@@ -1,17 +1,7 @@
-import csv
 import os
-import datetime
-
-from settings import settings
-from hot_redis.types import HotClient as PatchedRedis
-settings['redis_conn'] = redis_conn = PatchedRedis(
-    host=settings.REDIS_HOST,
-    port=settings.REDIS_PORT,
-    db=settings.REDIS_DB)
 
 import socket
 import contextlib
-import argparse
 import functools
 import signal
 from tornado import ioloop, netutil, process, gen, iostream
@@ -105,8 +95,6 @@ class QueclinkServer(RawServer):
     def __init__(self, *a, **kw):
         super(QueclinkServer, self).__init__(*a, **kw)
         self.dongles = {}
-        self.io_loop.add_future(self.init_workflow(),
-                                lambda future: future.result())
 
     @gen.coroutine
     def on_connect(self, sock, address):
@@ -130,37 +118,8 @@ class QueclinkServer(RawServer):
             # TODO. warning
         self.dongles[unique_id] = session
 
-    @gen.coroutine
-    def init_workflow(self):
-        self.io_loop.add_future(self._command_watchdog(),
-                                lambda future: future.result())
-
-    @gen.coroutine
-    def _command_watchdog(self):
-        path = os.path.join('/tmp', 'queclink_commands')
-        while True:
-            if os.path.exists(path):
-                try:
-                    with open(path) as f:
-                        f_csv = csv.reader(f)
-                        for imei, msg in f_csv:
-                            self.send_command(imei, msg)
-                    os.remove(path)
-                except Exception as ex:
-                    gen_log.warning("Error during sending command %s", ex)
-
-            yield gen.Task(self.io_loop.add_timeout, datetime.timedelta(seconds=1))
-
     def close_session(self, unique_id):
         self.dongles.pop(unique_id, None)
-
-    def send_command(self, imei, msg):
-        session = self.dongles.get(imei)
-        if session:
-            callback = lambda *args, **kwars: gen_log.info('SENT MESSAGE TO %s: %s', imei, msg)
-            session.stream.write(msg, callback)
-        else:
-            gen_log.info('NO SESSION WITH IMEI %s', imei)
 
 
 def handle_stop(io_loop, obd_server, signum, stack):

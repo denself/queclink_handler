@@ -1,6 +1,4 @@
 tornado==3.2
-hot-redis==0.2.0
-git+https://github.com/disqus/durabledict.git@master
 toro==0.5
 voluptuous==0.8.5
 umsgpack

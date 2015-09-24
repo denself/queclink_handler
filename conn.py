@@ -1,14 +1,10 @@
-import functools
 from tornado import gen
-import conf, utils
+import conf
+import utils
 from logger import gen_log
 from commons.schemas import COMMON_LOG_SCHEMA
-from commons import redis_keys, protocol, obd
+from commons import obd
 from commons import utils as time_utils
-
-from settings import settings
-
-redis_conn = settings['redis_conn']
 
 DEFAULT_CONFIGURATIONS = {
     'password': '',
@@ -25,22 +21,6 @@ DEFAULT_CONFIGURATIONS = {
     'send_interval': 30,
     'fixed_report_mode': conf.FIXED_TIMING_REPORT_MODE
 }
-
-
-def login_required(fn):
-
-    @functools.wraps(fn)
-    def decorated_fn(conn, *a, **kw):
-        if conn.is_auth:
-            raise gen.Return(fn(conn, *a, **kw))
-        raise Exception("Request[%s] is not authorized for connection %s."
-                        % (fn.__name__, conn.session_key))
-
-    return decorated_fn
-
-
-def filter_results(results):
-    return filter(lambda x: x != conf.DISCONN_RESULT, results)
 
 
 def extract_codes(dtc_number, raw_codes):
@@ -75,17 +55,6 @@ def extract_codes(dtc_number, raw_codes):
     return obd.DTC_CODE_SPLITTER.join(dtcs)
 
 
-def add_entry_log(imei, original_msg, entry):
-    ser_entry = protocol.dump_msg({
-        'raw': original_msg, 'handled': entry, 'imei': imei})
-    redis_conn.publish(redis_keys.TCP_DONGLE_CHANNEL,
-                       ser_entry)
-    pipe = redis_conn.pipeline()
-    pipe.lpush(redis_keys.TCP_DONGLE_LOG % imei, ser_entry)
-    pipe.ltrim(redis_keys.TCP_DONGLE_LOG % imei, 0, 500)
-    pipe.execute()
-
-
 class QueclinkConnection(object):
 
     r"""High level terminal connection."""
@@ -118,10 +87,6 @@ class QueclinkConnection(object):
         msg = {'imei': imei,
                'conn_status': 1,
                'ts': str(time_utils.now())}
-        # try:
-        #     #add_entry_log(imei, msg, msg)
-        # except Exception, e:
-        #     gen_log.exception(e)
 
     @gen.coroutine
     def on_report(self, original_msg, response, sack, from_buffer=False):
@@ -194,9 +159,11 @@ class QueclinkConnection(object):
         if mapped_log:
             #raise Exception(mapped_log)
             mapped_log = COMMON_LOG_SCHEMA(mapped_log)
-            redis_conn.publish(redis_keys.OBD_LOG_CHANNEL,
-                               protocol.dump_msg(mapped_log))
-            #add_entry_log(self.session_key, original_msg, mapped_log)
+
+            # TODO: save to postgres
+            # redis_conn.publish(redis_keys.OBD_LOG_CHANNEL,
+            #                    protocol.dump_msg(mapped_log))
+
             gen_log.info('MESSAGE PUBLISHED %s', mapped_log)
             raise gen.Return(mapped_log)
         gen_log.info("PROCESSED REPORT: %s[ack-%s]", log, sack)
@@ -223,4 +190,3 @@ class QueclinkConnection(object):
         msg = {'imei': self.__imei,
                'conn_status': 0,
                'ts': str(time_utils.now())}
-        #add_entry_log(self.__imei, msg, msg)
