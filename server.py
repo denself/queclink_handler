@@ -140,7 +140,7 @@ if __name__ == '__main__':
     # register signal handlers
     handle_stop = functools.partial(handle_stop, io_loop, server)
     signal.signal(signal.SIGTERM, handle_stop)
-    gen_log.info("Queclink Server is UP.")
+    gen_log.info("Queclink Server is UP on port {}.".format(port))
     io_loop.start()
 
 
