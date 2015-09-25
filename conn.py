@@ -139,15 +139,15 @@ class QueclinkConnection(object):
         finally:
             session.close()
 
-        my_data = {
+        my_data = {'d': {
             "lat": str(log.get('latitude', None)),
             "long": str(log.get('longitude', None))
-        }
+        }}
         try:
 
             dev = ibmiotf.device.Client(options)
             dev.connect()
-            dev.publishEvent("d", "json", my_data)
+            dev.publishEvent("gps", "json", my_data)
             dev.disconnect()
         except Exception as ex:
             gen_log.info('failed to publish %s', ex)
