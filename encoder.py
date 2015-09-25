@@ -4,6 +4,7 @@ import json
 import sqlalchemy as sa
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm.base import class_mapper
+from sqlalchemy.orm.exc import DetachedInstanceError
 
 __author__ = 'D.Ivanets'
 
@@ -24,7 +25,10 @@ class AlchemyEncoder(json.JSONEncoder):
             fields = {}
             for field in [col.key for col in class_mapper(type(obj)).iterate_properties
                           if isinstance(col, sa.orm.ColumnProperty)]:
-                data = obj.__getattribute__(field)
+                try:
+                    data = obj.__getattribute__(field)
+                except DetachedInstanceError:
+                    data = 'UNKNOWN'
                 if field != 'dt_modify' and not field.startswith('_'):
                     try:
                         # this will fail on non-encodable values, like other classes

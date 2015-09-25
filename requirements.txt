@@ -4,3 +4,5 @@ voluptuous==0.8.5
 umsgpack
 SQLAlchemy
 psycopg2
+paho-mqtt
+requests
