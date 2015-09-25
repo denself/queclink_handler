@@ -1,3 +1,4 @@
+import ibmiotf.device
 from tornado import gen
 import conf
 from models import Backend, LogEntry
@@ -21,6 +22,14 @@ DEFAULT_CONFIGURATIONS = {
     'protocol_format': conf.ASCII_FORMAT,
     'send_interval': 30,
     'fixed_report_mode': conf.FIXED_TIMING_REPORT_MODE
+}
+
+options = {
+    "org": "qrqu70",
+    "type": "vehicle",
+    "id": "864251020002569",
+    "auth-method": "token",
+    "auth-token": "a-qrqu70-lgtfdke36o"
 }
 
 
@@ -129,6 +138,19 @@ class QueclinkConnection(object):
             session.rollback()
         finally:
             session.close()
+
+        my_data = {
+            "lat": str(log.get('latitude', None)),
+            "long": str(log.get('longitude', None))
+        }
+        try:
+
+            dev = ibmiotf.device.Client(options)
+            dev.connect()
+            dev.publishEvent("d", "json", my_data)
+            dev.disconnect()
+        except Exception as ex:
+            gen_log.info('failed to publish %s', ex)
 
         gen_log.info('MESSAGE PUBLISHED %s', json_log)
         raise gen.Return(None)
