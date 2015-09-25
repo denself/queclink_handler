@@ -2,3 +2,5 @@ tornado==3.2
 toro==0.5
 voluptuous==0.8.5
 umsgpack
+SQLAlchemy
+psycopg2

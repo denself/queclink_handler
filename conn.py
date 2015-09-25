@@ -1,5 +1,6 @@
 from tornado import gen
 import conf
+from models import Backend, LogEntry
 import utils
 from logger import gen_log
 from commons.schemas import COMMON_LOG_SCHEMA
@@ -69,6 +70,10 @@ class QueclinkConnection(object):
         self.config.update(kwargs)
 
     @property
+    def backend(self):
+        return Backend.instance()
+
+    @property
     def is_auth(self):
         return self._session.is_open()
 
@@ -91,82 +96,40 @@ class QueclinkConnection(object):
     @gen.coroutine
     def on_report(self, original_msg, response, sack, from_buffer=False):
         log = dict(response.log.__dict__)
-        if self.config['sack_enable']:
-            # TODO. logic to sack
-            pass
-        mapped_log = {}
-        mapped_log['imei'] = log.get('unique_id', self.session_key)
-        mapped_log['device_tp'] = obd.QUECLINK
-        mapped_log['vin'] = log.get('vin', None)
-        if not mapped_log['vin'] is None:
-            mapped_log['vin'] = mapped_log['vin'].decode('utf-8', 'ignore')
-        mapped_log['from_buffer'] = from_buffer
+
+        log_entry = LogEntry()
+
+        log_entry.imei = log.get('unique_id', self.session_key)
+
         try:
-            mapped_log['gps_utc_time'] = time_utils.dt2ts(time_utils.to_dt(
+            log_entry.gps_utc_time = time_utils.dt2ts(time_utils.to_dt(
                 log.get('gps_utc_time')))
         except (ValueError, TypeError):
             return
 
-        mapped_log['ts'] = mapped_log['gps_utc_time']
-        if response.header == conf.FIXED_REPORT:
-            if log.get('protocol_version') == '210501':  # bicycle
-                mapped_log['gps_accuracy'] = log.get('gps_accuracy', None)
-                mapped_log['speed'] = log.get('speed', None)
-                mapped_log['altitude'] = log.get('altitude', None)
-                mapped_log['longitude'] = log.get('longitude', None)
-                mapped_log['latitude'] = log.get('latitude', None)
-                mapped_log['mileage'] = log.get('mileage', None)
-            else:
-                mapped_log['gps_accuracy'] = log.get('gps_accuracy', None)
-                mapped_log['speed'] = log.get('speed', None)
-                mapped_log['altitude'] = log.get('altitude', None)
-                mapped_log['longitude'] = log.get('longitude', None)
-                mapped_log['latitude'] = log.get('latitude', None)
-                mapped_log['mileage'] = log.get('mileage', None)
-                mapped_log['rpm'] = log.get('rpm', None)
-                mapped_log['fuel_consumption'] = log.get('fuel_consumption', None)
-                mapped_log['fuel_level_input'] = log.get('fuel_level_input', None)
-        elif response.header == conf.OBD_REPORT:
-            mapped_log['obd_connect_status'] = int(log.get('obd_connect', '0'))
-            mapped_log['power_voltage'] = log.get('obd_power_voltage', None)
-            mapped_log['supported_pids'] = utils.process_supported_pids(
-                log.get('supported_pids', '00000000'))
-            mapped_log['rpm'] = log.get('rpm', None)
-            mapped_log['engine_coolant_temp'] = log.get(
-                'engine_coolant_temp', None)
-            mapped_log['fuel_consumption'] = log.get(
-                'fuel_consumption', None)
-            mapped_log['DTCs_cleared_distance'] = log.get(
-                'DTCs_cleared_distance', None)
-            mapped_log['MIL_active_distance'] = log.get(
-                'MIL_active_distance', None)
-            mapped_log['MIL_status'] = int(log.get('MIL_status') or '0')
-            mapped_log['DTCs_number'] = int(log.get('DTCs_cnt') or '0')
-            mapped_log['DTCs'] = extract_codes(
-                mapped_log['DTCs_number'], log.get('DTCs', None))
-            mapped_log['throttle_position'] = log.get('throttle_pos', None)
-            mapped_log['engine_load'] = log.get('engine_load', None)
-            mapped_log['fuel_level_input'] = log.get('fuel_level_input', None)
-            mapped_log['gps_accuracy'] = log.get('gps_accuracy', None)
-            mapped_log['altitude'] = log.get('altitude', None)
-            mapped_log['longitude'] = log.get('longitude', None)
-            mapped_log['latitude'] = log.get('latitude', None)
-            mapped_log['speed'] = log.get('speed', None)
-            mapped_log['external_power_voltage'] = log.get('obd_power_voltage', None)
+        if response.header in (conf.FIXED_REPORT, conf.OBD_REPORT):
+            log_entry.gps_accuracy = log.get('gps_accuracy', None)
+            log_entry.speed = log.get('speed', None)
+            log_entry.altitude = log.get('altitude', None)
+            log_entry.longitude = log.get('longitude', None)
+            log_entry.latitude = log.get('latitude', None)
+            # mapped_log['rpm'] = log.get('rpm', None)
         else:
             gen_log.warning("Common Protocol hasn't conform to report %s",
                             response.header)
-        if mapped_log:
-            #raise Exception(mapped_log)
-            mapped_log = COMMON_LOG_SCHEMA(mapped_log)
+            raise gen.Return(None)
+        session = self.backend.get_session()
 
-            # TODO: save to postgres
-            # redis_conn.publish(redis_keys.OBD_LOG_CHANNEL,
-            #                    protocol.dump_msg(mapped_log))
+        try:
+            """Everything I need to do here"""
+            session.add(log_entry)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+        finally:
+            session.close()
 
-            gen_log.info('MESSAGE PUBLISHED %s', mapped_log)
-            raise gen.Return(mapped_log)
-        gen_log.info("PROCESSED REPORT: %s[ack-%s]", log, sack)
+        gen_log.info('MESSAGE PUBLISHED %s', log_entry.json())
         raise gen.Return(None)
 
     @gen.coroutine
