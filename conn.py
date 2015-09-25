@@ -119,17 +119,18 @@ class QueclinkConnection(object):
                             response.header)
             raise gen.Return(None)
         session = self.backend.get_session()
-
+        json_log = log_entry.json()
         try:
             """Everything I need to do here"""
             session.add(log_entry)
             session.commit()
+            json_log = log_entry.json()
         except Exception as e:
             session.rollback()
         finally:
             session.close()
 
-        gen_log.info('MESSAGE PUBLISHED %s', log_entry.json())
+        gen_log.info('MESSAGE PUBLISHED %s', json_log)
         raise gen.Return(None)
 
     @gen.coroutine
